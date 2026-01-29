@@ -29,6 +29,6 @@ def initialize_robots(arena_size=-1, particle_box=-1): # particle_box: size of t
     #x_center = arena_size // 2 - particle_box / 2
     y_center = arena_size // 2 - particle_box / 2
     robots = []
+    robots.append(robot_braitenberg_hateWall.Robot_player(4, y_center, 0, name="My Robot", team="A"))
 
-    robots.append(robot_braitenberg_avoider.Robot_player(50, y_center, 0, name="My Robot", team="A"))
     return robots
