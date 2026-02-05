@@ -29,7 +29,7 @@ class Robot:
     def reset(self):
         self.x = self.x0
         self.y = self.y0
-        self.theta = self.theta0
+        self.theta = random.random()*360
         self.log_sum_of_translation = 0
         self.log_sum_of_rotation = 0
     # Modified: step now takes extra arguments sensor_view and sensor_robot with defaults.

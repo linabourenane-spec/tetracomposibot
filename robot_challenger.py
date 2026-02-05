@@ -23,8 +23,10 @@ class Robot_player(Robot):
         nb_robots+=1
         super().__init__(x_0, y_0, theta_0, name="Robot "+str(self.robot_id), team=self.team_name)
 
-    def step(self, sensors, sensor_view=None, sensor_robot=None, sensor_team=None):
+    def step(self,robotId, sensors, sensor_view=None, sensor_robot=None, sensor_team=None):
+
         translation = sensors[sensor_front]
         rotation = 1.0 * sensors[sensor_front_left] - 1.0 * sensors[sensor_front_right] + (random.random()-0.5)*0.1
         return translation, rotation, False
+
 
