@@ -26,13 +26,15 @@ max_iterations = 1000000
 
 # initialization : create and place robots at initial positions (returns a list containing the robots)
 
-import robot_optimize
+import randomsearch2
+import genetic_algorithms
 
 def initialize_robots(arena_size=-1, particle_box=-1): # particle_box: size of the robot enclosed in a square
     x_center = 5
     y_center = arena_size // 5 - particle_box / 2
     robots = []
     robots.append(robot_challenger_training.Robot_player(x_center, y_center, 0, name="My Robot", team="A",evaluations=evaluations,it_per_evaluation=it_per_evaluation)) # start from left: 4, y_center
+
 
     return robots
 
