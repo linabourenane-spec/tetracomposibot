@@ -1,6 +1,7 @@
 # Configuration file.
 
 import arenas
+import robot_challenger_training
 
 # general -- first three parameters can be overwritten with command-line arguments (cf. "python tetracomposibot.py --help")
 
@@ -27,7 +28,7 @@ def initialize_robots(arena_size=-1, particle_box=-1): # particle_box: size of t
     x_center = arena_size // 2 - particle_box / 2
     y_center = arena_size // 2 - particle_box / 2
     robots = []
-    robots.append(robot_wanderer.Robot_player(4, y_center, 0, name="First Robot", team="Team Wander"))
+    robots.append(robot_challenger_training.Robot_player(4, y_center, 0, name="First Robot", team="Team Wander"))
     robots.append(robot_wanderer.Robot_player(93, y_center, 180, name="Second robot", team="Team Wander"))
     robots.append(robot_dumb.Robot_player(x_center, y_center+20, 90, name="Third robot", team="Team Dumb"))
     robots.append(robot_dumb.Robot_player(x_center, y_center-40, 270, name="Fourth robot", team="Team Dumb"))
