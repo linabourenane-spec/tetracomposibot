@@ -31,3 +31,4 @@ def initialize_robots(arena_size=-1, particle_box=-1): # particle_box: size of t
     robots = []
 
     robots.append(randomsearch2.Robot_player(4, y_center, 0, name="First Robot", team="Team Wander"))
+    

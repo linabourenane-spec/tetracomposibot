@@ -43,6 +43,7 @@ class Robot_player(Robot):
     def step(self, sensors, sensor_view=None, sensor_robot=None, sensor_team=None):
         dist_reelle = math.sqrt((self.x - self.last_x)**2 + (self.y - self.last_y)**2)
         rot_reelle = abs(self.theta - self.last_theta)
+        print(sensor_team)
         
         self.last_x = self.x
         self.last_y = self.y
