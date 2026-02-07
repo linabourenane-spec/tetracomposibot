@@ -4,7 +4,7 @@ from robot import *
 import math
 
 team_name = "PureBraitenberg"
-members = [("Nom", "Prénom", "ID")]
+
 
 # Définition des capteurs (8 au total)
 sensor_back_left = 0
