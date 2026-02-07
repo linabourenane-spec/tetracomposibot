@@ -24,11 +24,12 @@ display_time_stats = True
 import robot_wanderer
 import robot_dumb
 import randomsearch2
+import WallFollowexr
 
 def initialize_robots(arena_size=-1, particle_box=-1): # particle_box: size of the robot enclosed in a square
     x_center = arena_size // 2 - particle_box / 2
     y_center = arena_size // 2 - particle_box / 2
     robots = []
 
-    robots.append(randomsearch2.Robot_player(4, y_center, 0, name="First Robot", team="Team Wander"))
+    robots.append(WallFollowexr.Robot_player(4, y_center, 0, name="First Robot", team="Team Wander"))
     

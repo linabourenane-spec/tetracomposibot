@@ -1,6 +1,7 @@
 # Configuration file.
 
 import arenas
+from tetracomposibot import WallFollowexr
 
 # general -- first three parameters can be overwritten with command-line arguments (cf. "python tetracomposibot.py --help")
 
@@ -38,7 +39,8 @@ def initialize_robots(arena_size=-1, particle_box=-1): # particle_box: size of t
     robots.append(robot_braitenberg_avoider.Robot_player(4, y_center + 10, 0, name="My Robot", team="A"))
     robots.append(robot_braitenberg_avoider.Robot_player(10, y_center + 10, 0, name="My Robot", team="B"))  
     robots.append(robot_braitenberg_avoider.Robot_player(15, y_center + 10, 0, name="My Robot", team="D"))  
-    robots.append(robot_braitenberg_avoider.Robot_player(20, y_center + 10, 0, name="My Robot", team="G"))    
+    robots.append(robot_braitenberg_avoider.Robot_player(20, y_center + 10, 0, name="My Robot", team="G"))   
+    robots.append(WallFollowexr.Robot_player(4, y_center, 0, name="First Robot", team="Team Wander")) 
   
 
 
