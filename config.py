@@ -25,6 +25,7 @@ import robot_wanderer
 import robot_dumb
 import randomsearch2
 import WallFollowexr
+import robot_braitenberg_loveWall   
 
 def initialize_robots(arena_size=-1, particle_box=-1): # particle_box: size of the robot enclosed in a square
     x_center = arena_size // 2 - particle_box / 2
@@ -32,4 +33,5 @@ def initialize_robots(arena_size=-1, particle_box=-1): # particle_box: size of t
     robots = []
 
     robots.append(WallFollowexr.Robot_player(4, y_center, 0, name="First Robot", team="Team Wander"))
+    return robots
     
