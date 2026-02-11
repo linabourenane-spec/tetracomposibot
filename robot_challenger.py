@@ -1,86 +1,340 @@
-# Projet "robotique" IA&Jeux 2025
-#
-# Binome:
-#  Prénom Nom No_étudiant/e : _________
-#  Prénom Nom No_étudiant/e : _________
-#
-# check robot.py for sensor naming convention
-# all sensor and motor value are normalized (from 0.0 to 1.0 for sensors, -1.0 to +1.0 for motors)
-
 from robot import *
+import random
 import math
+
+# Refactor:
+# - Un seul code "winner" pour la détection murs/robots (utilisé par tous, y compris hunter et NN)
+# - Robot id=4 : winner par défaut, chasse (hunter) seulement si ennemi détecté
+# - Robot id=0 : ton NN/GA activé à partir de l'itération 1000, MAIS les 3 couches winner (robots/murs) restent prioritaires
+# Contrainte respectée: une seule mémoire self.memory (int)
 
 nb_robots = 0
 
-
 class Robot_player(Robot):
-    team_name = "Challenger"  # vous pouvez modifier le nom de votre équipe
-    robot_id = -1  # ne pas modifier. Permet de connaitre le numéro de votre robot.
-    memory = 0  # vous n'avez le droit qu'a une case mémoire qui doit être obligatoirement un entier
+    team_name = "A"
+    robot_id = -1
+    memory = 0  # unique mémoire (int)
+
+    LATERAL_SENSORS = [sensor_front_left, sensor_left, sensor_front_right, sensor_right]
+    NON_LATERAL_SENSORS = [sensor_front, sensor_rear_left, sensor_rear, sensor_rear_right]
 
     def __init__(self, x_0, y_0, theta_0, name="n/a", team="n/a"):
         global nb_robots
         self.robot_id = nb_robots
         nb_robots += 1
-        super().__init__(x_0, y_0, theta_0, name="Robot " + str(self.robot_id), team=self.team_name)
-        # Un génome aléatoire de 142 gènes
-        self.genome = [random.uniform(-1, 1) for _ in range(142)]
+        super().__init__(x_0, y_0, theta_0, name="Robot "+str(self.robot_id), team=self.team_name)
+        self.memory = 0
+
+    def reset(self):
+        super().reset()
 
     def step(self, sensors, sensor_view=None, sensor_robot=None, sensor_team=None):
-        # 1. PRÉPARATION DES ENTRÉES (INPUTS)
-        inputs = []
+        VIEW_NONE, VIEW_WALL, VIEW_ROBOT = 0, 1, 2
+        F, FL, L, RL, RE, RR, R, FR = 0, 1, 2, 3, 4, 5, 6, 7
 
-        # Ajout des distances (8)
-        inputs.extend(sensors)
+        def clamp(x, a=-1.0, b=1.0):
+            x = float(x)
+            if x < a: return a
+            if x > b: return b
+            return x
 
-        # Ajout "Est-ce un mur ?" (8)
-        inputs.extend([1.0 if v == 1 else 0.0 for v in sensor_view])
+        def is_enemy(i):
+            return (sensor_view is not None and sensor_team is not None and
+                    sensor_view[i] == VIEW_ROBOT and sensor_team[i] != self.team and sensor_team[i] != "n/a")
 
-        # Ajout "Est-ce un ennemi ?" (8)
-        # Note: self.team est accessible dans votre robot
-        inputs.extend([1.0 if (t != "n/a" and t != self.team) else 0.0 for t in sensor_team])
+        # ----------------------------
+        # Mémoire: itération + état interne
+        # memory = it * ITER_SCALE + internal_state
+        # internal_state utilisé par le NN (id=0)
+        # ----------------------------
+        ITER_SCALE = 10**14
+        mem = int(self.memory) if self.memory is not None else 0
+        it = mem // ITER_SCALE
+        internal = mem % ITER_SCALE
+        it += 1
 
-        # Ajout Mémoire (1)
-        inputs.append(float(self.memory))
+        # ----------------------------
+        # Winner (code unique, réutilisé partout)
+        # ----------------------------
+        WINNER_PARAM = [1, 0, 1, 1, 1, 1, -1, -1]
 
-        # Total inputs = 25
+        def winner_layers():
+            """
+            Applique les 3 couches winner:
+            1) robot détecté -> tourner (comme le winner original)
+            2) mur latéral -> wall follow proba 0.9, sinon avoidance
+            3) mur non-latéral -> avoidance
+            Retourne (handled, t, r)
+            """
+            # 1) robot détecté (winner original: any view==2)
+            if sensor_view is not None and any(v == VIEW_ROBOT for v in sensor_view):
+                return True, 1.0, 1.0
 
-        # 2. COUCHE CACHÉE (HIDDEN LAYER)
-        # Supposons que self.weights_hidden contient les poids optimisés par votre algo génétique
-        # Structure de self.weights_hidden : liste de 5 listes de 25 poids (+ biais éventuellement)
-        hidden_outputs = []
-        nb_hidden = 5
+            # 2) mur latéral
+            if sensor_view is not None and any(sensor_view[i] == VIEW_WALL for i in self.LATERAL_SENSORS):
+                if random.random() < 0.9:
+                    thr = sensors[sensor_front]
+                    translation = thr * 0.5
+                    rot_left = sensors[sensor_left] + sensors[sensor_front_left]
+                    rot_right = sensors[sensor_right] + sensors[sensor_front_right]
+                    rotation = (rot_left - rot_right) * 0.2
+                    rotation = max(min(rotation, 1.0), -1.0)
+                    return True, translation, rotation
+                else:
+                    free_dirs = [i for i in range(8) if not (sensor_view and sensor_view[i] == VIEW_WALL)]
+                    if not free_dirs:
+                        return True, 1.0, random.uniform(-1.0, 1.0)
+                    dir_idx = random.choice(free_dirs)
+                    angle = dir_idx * 45 if dir_idx <= 4 else (dir_idx - 8) * 45
+                    if angle > 180:
+                        angle -= 360
+                    rotation = angle / 180.0
+                    return True, 1.0, rotation
 
-        # Exemple simplifié sans gestion matricielle complexe
-        # index_weight est un pointeur pour parcourir votre liste linéaire de gènes (paramètres)
-        idx = 0
+            # 3) mur non-latéral
+            if sensor_view is not None and any(sensor_view[i] == VIEW_WALL for i in self.NON_LATERAL_SENSORS):
+                free_dirs = [i for i in range(8) if not (sensor_view and sensor_view[i] == VIEW_WALL)]
+                if not free_dirs:
+                    return True, 1.0, random.uniform(-1.0, 1.0)
+                dir_idx = random.choice(free_dirs)
+                angle = dir_idx * 45 if dir_idx <= 4 else (dir_idx - 8) * 45
+                if angle > 180:
+                    angle -= 360
+                rotation = angle / 180.0
+                return True, 1.0, rotation
 
-        for h in range(nb_hidden):
-            activation = 0
-            for inp in inputs:
-                activation += inp * self.genome[idx]  # self.genome est votre liste de paramètres
-                idx += 1
-            # Ajout d'un biais (optionnel mais recommandé)
-            activation += self.genome[idx]
-            idx += 1
+            return False, 0.0, 0.0
 
-            # Fonction d'activation (Tanh est souvent utilisée ici)
-            hidden_outputs.append(math.tanh(activation))
+        def winner_fallback_ga():
+            # 4) fallback GA tanh constant (winner original)
+            t = math.tanh(
+                WINNER_PARAM[0]
+                + WINNER_PARAM[1] * sensors[sensor_front_left]
+                + WINNER_PARAM[2] * sensors[sensor_front]
+                + WINNER_PARAM[3] * sensors[sensor_front_right]
+            )
+            r = math.tanh(
+                WINNER_PARAM[4]
+                + WINNER_PARAM[5] * sensors[sensor_front_left]
+                + WINNER_PARAM[6] * sensors[sensor_front]
+                + WINNER_PARAM[7] * sensors[sensor_front_right]
+            )
+            return t, r
 
-        # 3. COUCHE DE SORTIE (OUTPUT LAYER)
-        outputs = []
-        nb_outputs = 2  # Translation, Rotation
+        def winner_full():
+            handled, t, r = winner_layers()
+            if handled:
+                return t, r
+            return winner_fallback_ga()
 
-        for o in range(nb_outputs):
-            activation = 0
-            for h_out in hidden_outputs:
-                activation += h_out * self.genome[idx]
-                idx += 1
-            activation += self.genome[idx]  # Biais sortie
-            idx += 1
-            outputs.append(math.tanh(activation))
+        # ----------------------------
+        # Hunter (ton code), mais déclenché uniquement si ennemi détecté
+        # et sinon: winner_full()
+        # ----------------------------
+        def hunter_chase():
+            STEER = {F: 0.0, FL: +0.6, L: +0.9, RL: +1.0, RE: 0.0, RR: -1.0, R: -0.9, FR: -0.6}
 
-        translation = outputs[0]
-        rotation = outputs[1]
+            # anti-corner
+            front_wall = (sensor_view is not None and sensor_view[F] == VIEW_WALL and sensors[F] < 0.55)
+            fl_wall = (sensor_view is not None and sensor_view[FL] == VIEW_WALL and sensors[FL] < 0.35)
+            fr_wall = (sensor_view is not None and sensor_view[FR] == VIEW_WALL and sensors[FR] < 0.35)
+            if front_wall and (fl_wall or fr_wall):
+                if fl_wall and not fr_wall:
+                    return -0.35, -0.35
+                if fr_wall and not fl_wall:
+                    return -0.35, +0.35
+                return -0.35, (+0.35 if (self.robot_id % 2 == 0) else -0.35)
 
-        return translation, rotation, False
+            # anti-wall early
+            if sensor_view is not None and sensor_view[F] == VIEW_WALL and sensors[F] < 0.75:
+                left_free = sensors[FL] if sensor_view[FL] != VIEW_WALL else 0.0
+                right_free = sensors[FR] if sensor_view[FR] != VIEW_WALL else 0.0
+                t = 0.85
+                r = -0.18 if right_free > left_free else +0.18
+                return t, r
+
+            # chase: ennemi le plus proche
+            best_i, best_d = None, 1.0
+            if sensor_view is not None:
+                for i in range(8):
+                    if is_enemy(i) and sensors[i] < best_d:
+                        best_d, best_i = sensors[i], i
+
+            if best_i is not None:
+                r = STEER.get(best_i, 0.0)
+                if best_d > 0.45:
+                    t = 0.95
+                elif best_d > 0.25:
+                    t = 0.75
+                else:
+                    t = 0.50
+                return clamp(t), clamp(r)
+
+            # si plus d'ennemi visible: on ne doit pas rester en "chasse"
+            # (on ne passe pas ici car on ne l'appelle que si ennemi détecté)
+            return winner_full()
+
+        # ----------------------------
+        # NN (ton robot entraîné) - activé après 1000 itérations
+        # MAIS: winner_layers reste prioritaire (murs/robots)
+        # ----------------------------
+        # Poids copiés depuis ton robot_menad (idx 0)
+        G_OPEN_0 = [0.22458149026042265, -0.7953802126371169, 1.2470627039963107, 0.5388851029023143, 1.0735470648628225, 0.039896137061665726, -0.03226016061076947, -0.054654284114955154, -0.4154877473377442, -0.686339350051467, 0.8917201432696479, 0.712545437798266, 1.097554151866188, -0.3072852646606929, 0.7331660356696517, 0.3067106871370912, -0.11918852418933293, -0.9764382518974736, -0.6651475803461985, -0.08740292741467282, -0.8291995531351596, 0.8830018748293574, 0.041156371025741906, -0.5056648638481552, 1.3071871860466493, 1.3236740126592756, 0.2976762671098168, -0.8129327387400036, 0.09130831079080526, -0.08207866893138024, 0.12044060477676712, 1.3781075766256203, -0.48918854968321346, 0.9821718703001878, 0.14979029126240534, -0.727187828010445, 0.9124072626256383, -0.01434966928056422, -0.06375542412743865, -0.4863241664047522, -0.4493058203581144, 0.5968232635664366, -0.2679243105944925, -0.21721628370643187, -0.0038008508674112207, -0.021186486419038836, 0.25210560344313493, 0.9256691442129787, 0.3827167725162106, 1.4725727329314053, -0.7206283971756229, 0.05412662097775747, -1.0112576555675803, 0.5271004376366932, 0.6274275044515794, -0.6183411814048598, 0.03995258329411653, 1.6953956081736297, 1.4716005726883215, 0.555887599698769, 0.43497057350780327, -0.8824191037000356, -0.7102135529584419, -0.10325763424780102, 1.4546604492687085, -0.6871206360257568, -0.5353072504339744, -1.00968262544168, -0.6991228599927826, 0.2491363257585947, -0.08720520221222275, -0.3364136944938395, -0.22455806507060455, 0.6980476044952207, -0.4985432703169606, 0.6554920051358631, -0.7136351979794933, 0.6938348910710915, 0.8518260157113918, 1.2175855965907825, 0.22686494446859345, 0.26000047442366075, -0.008584696421238602, 1.2356491873039752, -0.13651987038378155, 1.7503725513369432, 1.055161529054449, -0.10966956957320217, -0.5905176415366662, 0.4720017092074376, 0.8310889071776537, -0.6944970529018627, -0.0013032448646204953, 0.5151823536657352, 0.48248028596859655, -1.2053946287796666, 0.4612925648808912, 0.5941376627696078, -0.11849616808932877, 1.6775801847736849, -0.8237001893815447, 0.9431267156522404, -0.006257922067130495, -0.4737122298661865, 0.024111970816119876, 1.1167414741803936, -1.2708227967802215, 0.3771956435245226, -0.8805962747895266, 0.013413125729583954, 0.8188975175435977, 1.008881099036945, -1.3043857756893202, -1.3307154956481302, 1.0065125900947516, 0.4114357182429017, -0.847592328472009, 0.9056997477376394, 0.5014477451382278, -0.4213955517990765, -0.3541593820252271, 0.8408000438283957, 0.6405122676829267, -0.5369936819962209, 0.9470415809681985, 1.2375800910026964, 0.2737131046007307, -0.11292688954272331, 0.5275616943592931, -1.897633642698594, 1.0184307031135644, 1.5290745307268476, -0.31423415814437855, 0.26910659901882006, 0.1080763213103128, 0.38062740864619093, -0.1711301579830666, -0.4592747577016146, 1.1185425322048101, 0.6119334939016058, 0.06996633202911734, 0.24078330559826286, -0.16344932353137298, 0.5685417872686374, 0.16984742748993695, -0.005597734641823768, -0.17091030526006593, 0.3429513697979275, 0.40454247362913803, -0.78295480316155, 1.0625617052842011, -0.2716443700842702, 0.4440774393699911, -0.7265081343305586, 0.8681310302914531, -0.20895325077811952, 0.5154332977320665, -0.23898873715152735, 0.8228654144551836, 1.137404835314037, 0.03688259951194822, 1.2646594362850554, -0.42358035354990886, -1.7399516692102115, -0.6212737960535257, 0.04024420703830911, -0.13211946776335193, 0.18602643389923418, 0.4392081162862147, 1.0923128184064113, 0.6629080382323921, -0.9734405338375635, -0.9069636132016539, -0.5236614157419769, 0.6484114255892706, -0.5195819103989932, 0.9173655948528914, -0.056241605824226375, -0.5242723235322794, 1.319632013867662, -1.5455267100700438, 1.1451026522893593, -0.301959781664001, 1.1362401410107406, 0.23010506095739944, -0.5408302940421572, -0.28340250732918093, -0.12731941712932077, 0.6801967173616706, 0.3372596951964903, 1.3582091142735107, -1.284078528031974, -0.4963074922438678, 0.8870894824667187, 0.9555289500476488, 0.9434342425380176, -0.24916352981361972, -0.989531061594056, 0.3831146214114107, -0.5858133546186478, 0.5614389129719691, -0.020420010072540212, 0.1997631449624207, 0.9588415180969658, 0.5009228560220622, -0.2445941479088813, -0.06746336988701533, 0.09429933636015225, -0.03520898798933904, -0.18101694598565432, 0.05063620464237151, -0.9539005627876491, -0.36101513990236467, 0.39191236122888984, -0.223821193246067, -0.26426970132388894, 0.24944034610445728, -0.3011389726505531, -0.8096449729163063, -0.03657271675082411, -0.5637235384403327, 0.05523181528454103, 0.2673692500122473, 0.29424547455949557, -0.1062515527763922, -1.0334807642020603, -0.9248345271473032, -0.6801059234589077, 0.13278943811249339, -0.5343580874391431, 0.8221607125525359, 0.3165667437368901, 0.3938445951186922, 0.5612081165347176, -0.870515928209473, -0.36008074495980724, 0.4905174826028058, -0.4030810986142896, 1.1808317407954658, 0.26404238624263254, 0.09025231469982921, -0.429655247680687, 0.9309978890769366, 0.6362119811690404, -1.0072556253491403, 0.2993494698312139, 0.8586057064014264, -1.712532638126679, -1.0523703471782353, -0.4635410792297006, -0.20710059167975242, 0.14122871929092976, 1.2069521890518122, 1.1270184785772488, 0.42629300747627075, 0.3224853121560127, 1.0657463134462366, 0.6943448739532104, -1.1811804379928337, -0.06295716314608008, 1.535602968910468, -0.7515468305074449, 0.5173341346904566, 1.188180355100389, 0.3314008612890645, 0.02809146376951671, -0.688047051628471, 0.6025076976084452, 1.0883605104921237, -0.29862891497552946, -0.4412549434640285, 1.0160252842278523, 0.4906875587715236, 0.5128911778407361, 1.2546766501022402, -0.20884120430866523, -0.7744940806060673, 0.4340555901643121, 0.28525491073298115, 1.1676898080059215, 0.6689693350607111, 0.15614427751855417, 0.2629372343640808, 0.01214865561579001, -0.2614652574289824, 0.8372048462262167, 0.1649325080221417, 0.09948428115319138, 1.0362385713701583, -0.2578212542933847, 1.041086194182628, 0.9114967340273361, -0.15833589188653402, -1.3489513739529966, -0.6344423850378484, 0.252454104230984, 0.09556603359334195, 1.6287630233626267]
+        G_MAZE_0 = [0.286151409031802, -0.6358999398173388, -1.0352898915032227, -0.03414948248941059, -0.3419769902106046, -0.2235979859339931, -0.5451103065958159, 0.16041161444102486, -0.46941669367614, -0.7401673033784733, 0.9639629074023635, 0.5014171407160741, 0.2710842480769891, 0.256151262812272, 0.567970751661234, -1.0848421195146705, 0.341065242241971, -0.8029495031957208, -1.7951359113947114, -0.1827056183348392, 0.4134115600970159, -0.06525505898408734, -1.1631718968894813, -0.20572770336009152, 0.3737859949483174, 0.7496266174616127, -1.3825578734557629, 1.6974195927850337, 0.12464661697078741, 1.1452969025390807, -1.809381647810108, 0.10617737133642285, 0.4655035088658749, 0.5010879807872526, -0.4456733951175852, 0.09803604236870264, -1.1165430529811142, -0.3627308433699917, 0.17089847735319164, -1.5181503723696637, 0.20624276907814074, 0.1477557617488316, 0.1018844422930433, 0.348239951065418, 0.4282041729367959, -0.5007199785218782, 1.0172507063773484, 0.1643494543542258, 1.7209792826352495, 1.6102942234669937, -0.4265327564623164, 0.848984723006895, 0.35007696818941886, 0.11457817521390452, -0.9628036987669476, 0.6695054702475146, -0.12596096536982393, 0.923458901057598, 0.1755102819801759, 1.2055578253787402, -1.6478247338648784, 0.5257894681941457, 0.23554966006499123, -0.07936558762917588, 0.4427474429865703, -0.47671347222629173, 0.3828795731145714, 0.13631818159490727, 0.8477758508568912, -0.9385462472793381, -0.5882342637003803, 0.723838876905708, 0.7347140186038799, -1.5489151399051053, -0.8491946916902585, -1.4832070757995905, -1.153263865441235, 1.2864934376144697, -1.3899894114018914, 0.8295090363070016, -0.8527458424853578, 1.1177926058942833, -0.8739564208868646, -0.7685298879542806, 0.26538446765794543, 0.04364284947973755, -0.5574493652015571, -1.0487084366267656, -0.4560823390771114, -0.6346788573455262, -0.050793852390964865, 1.3229189594753588, -0.626273641640572, -0.14582093944215715, -1.396138010470127, -1.8723286669196668, -0.26732836059284515, -0.23095257612903045, 0.990577102343992, -1.1760313085527498, 0.38093907149303075, 0.788709054783571, -0.5367850381955788, -0.1986778647716051, 0.4371012557016407, 0.7068637278631205, 0.35800930258640806, -0.4991670139056494, -0.00014985042249445607, -0.1433402355161445, 1.5065075261987428, 0.21838293214045634, -0.17520562771254586, -0.6863047383214366, 0.07624441688683715, -0.14167751439564735, 0.9741160978047113, 1.3647999465845762, 0.5650902106094543, 1.6144115087859658, -0.23134705103587938, -0.6799593385163198, 1.6438788250737382, -0.06750663635572315, -0.479603635188443, 0.25228953465205284, -1.1703689684301863, 0.057433058903322246, -0.1870084117337643, 0.44787582336004683, -0.3701821966915648, -0.3700384079222475, 0.10607929080524107, -0.8794236714902937, -0.6755658431691046, 0.1562332662414581, -0.626804755260421, 0.4600169734452545, -0.5532739149221584, 0.6424648862940359, -0.938248532408585, 1.6276171086399427, 0.013430964930855067, -0.6750350635076093, -1.5183885883094563, -0.04897112865046597, -1.0651453896300989, 1.7712763834015506, 0.026409727571568273, 0.08343158228184189, 0.06543625004206749, -0.10688631452745961, -0.09546743246879907, -0.847001986545697, -1.3521690413309067, -1.041834102008524, -0.3599143024748964, -0.0951571707028141, 0.4561046909456344, 0.17565028596678844, -0.6001422772074688, 0.5863058336193541, -0.8016758246997268, -0.1910890542833798, 0.3447171444763168, -0.2668900470943374, 0.7787844794035628, -0.1296837500986023, -1.0868509921626026, -0.8582217248268169, 1.2192823404310695, 0.1220446076560038, 1.2470335182939862, -0.11247103659758359, 1.398636509822576, -0.8223827925502498, -0.5057473453112877, -2.0, 1.4070195632418163, 1.52193528138019, -0.8488618922172887, -1.8990930295568567, -0.07635637156612239, -0.2862205703222797, 0.5601780358600023, -0.1099749538224607, 0.9529125833096165, -0.9847344434090972, -0.191516546643698, 0.041248009363133435, 0.583117283553085, -0.6442884358042151, -0.2328404620780467, -0.08183531906434034, 0.07695521189887874, 0.4441855430996582, 0.5304089202620491, -0.22064936986034434, 0.6328565515649591, -0.086401919778204, 0.44916834374781156, 0.2132267450806946, -1.9231238212452648, -0.4719301311983726, 0.08362614929778518, 0.8966858490465519, 0.6331233030680494, -0.699910786427463, -0.6893640701843455, -0.4250133952517266, -0.2743829428778949, -1.1757212763555938, 0.8748454408249527, -0.4124116054025968, -1.3383467117448689, -0.1488616990748457, -0.8816793536424754, -0.4631388960345451, -0.2713313895133229, -0.3260712604655809, 0.5251513162523208, -1.1028508382587034, 0.8579167229490903, -0.7490842990430507, -0.696702739527799, -0.26107898976739424, -0.7850552532635358, 0.6807684369323344, -0.882646623648071, 0.3605478791575123, 0.7793534790337602, 0.033301032691472124, -0.25874692876018324, 0.861391034207825, 0.47705934194195654, 1.3093762306666894, -1.3216467539243715, 0.43086645335228135, 0.7477551567273699, -0.749047388500624, 1.204427973169903, 0.5134099652004901, -0.1855678454897892, 0.13308427700926545, 0.647969697293248, -1.672793929596418, -0.05405228194048744, -0.37909036608590413, 1.5649967707155494, 0.144138341421916, 0.9076609185760457, 0.4448082517268323, -0.0370509545972736, 0.013247503467973487, -1.1732566002573992, 1.314863745554782, -0.1210151773420903, 0.336382386872748, -1.321926856555358, 0.002654659552206961, -1.542714625024077, -1.2197856178704163, -0.261677899959535, 0.5118190458724947, 1.8287855012459182, -0.6555849195010338, 0.6821174378565596, -0.9203088232749466, -0.1655510564980647, -1.4900783506347133, 0.625929894096124, -1.1378150707188008, 1.068318073110863, 0.3314723569007249, 0.4591585991858841, 1.282173031069311, 0.40158165762938247, -1.9202198011325324, -0.4060088093197204, 0.28525178038431787, -1.0366026004406907, 1.4157196051008056, -0.9017661296652928, 1.4471614757172135, -0.2147412042591259, 1.2760118636548117, -0.1284029164185676, -1.2560968827774566, 0.9922473462822659, -0.7591572663916595, 1.206872078040512, 1.7151768740678166, -1.0013793643788058, -0.06812228338939354, -0.9479067866901776, -0.7833858239026417, -0.6486897669452255, 0.3975711371896073]
+
+        NUM_INPUTS, HIDDEN, NUM_OUTPUTS = 34, 8, 2
+
+        def nn_forward(genome, x):
+            total_params = (NUM_INPUTS * HIDDEN + HIDDEN) + (HIDDEN * NUM_OUTPUTS + NUM_OUTPUTS)
+            g = genome
+            if len(g) < total_params:
+                g = g + [0.0] * (total_params - len(g))
+            elif len(g) > total_params:
+                g = g[:total_params]
+
+            idxp = 0
+            W1 = []
+            for _ in range(HIDDEN):
+                W1.append(g[idxp:idxp + NUM_INPUTS])
+                idxp += NUM_INPUTS
+            b1 = g[idxp:idxp + HIDDEN]
+            idxp += HIDDEN
+            W2 = []
+            for _ in range(NUM_OUTPUTS):
+                W2.append(g[idxp:idxp + HIDDEN])
+                idxp += HIDDEN
+            b2 = g[idxp:idxp + NUM_OUTPUTS]
+
+            h = []
+            for j in range(HIDDEN):
+                s = b1[j]
+                w = W1[j]
+                for i in range(NUM_INPUTS):
+                    s += w[i] * x[i]
+                h.append(s if s > 0 else 0.0)
+
+            out = []
+            for k in range(NUM_OUTPUTS):
+                s = b2[k]
+                w = W2[k]
+                for j in range(HIDDEN):
+                    s += w[j] * h[j]
+                out.append(math.tanh(s))
+            return out
+
+        def nn_inputs34(ctx_norm):
+            x = []
+            for i in range(8):
+                x.append(min(1.0, float(sensors[i])))
+            for i in range(8):
+                x.append(1.0 if (sensor_view is not None and sensor_view[i] == VIEW_WALL) else 0.0)
+            for i in range(8):
+                x.append(1.0 if (sensor_view is not None and sensor_view[i] == VIEW_ROBOT and sensor_team is not None and sensor_team[i] == self.team) else 0.0)
+            for i in range(8):
+                x.append(1.0 if is_enemy(i) else 0.0)
+            x.append(float(ctx_norm))
+            x.append(0.0)
+            return x
+
+        def count_close_walls(thr=0.26):
+            if sensor_view is None:
+                return 0
+            c = 0
+            for i in range(8):
+                if sensor_view[i] == VIEW_WALL and float(sensors[i]) < thr:
+                    c += 1
+            return c
+
+        def detect_corridor():
+            if sensor_view is None:
+                return False
+            left_close = (sensor_view[L] == VIEW_WALL and sensors[L] < 0.35) or (sensor_view[FL] == VIEW_WALL and sensors[FL] < 0.30)
+            right_close = (sensor_view[R] == VIEW_WALL and sensors[R] < 0.35) or (sensor_view[FR] == VIEW_WALL and sensors[FR] < 0.30)
+            return left_close and right_close
+
+        # internal state for NN (mode+ctx)
+        # internal = mode*1_000_000 + ctx*10_000
+        def unpack_internal(m):
+            mode = int(m) // 1_000_000
+            ctx = (int(m) // 10_000) % 100
+            mode = 0 if mode <= 0 else 1
+            ctx = max(0, min(99, ctx))
+            return mode, ctx
+
+        def pack_internal(mode, ctx):
+            mode = 0 if mode <= 0 else 1
+            ctx = max(0, min(99, int(ctx)))
+            return mode * 1_000_000 + ctx * 10_000
+
+        def update_mode_ctx(mode, ctx):
+            many = (count_close_walls(thr=0.26) >= 3)
+            corridor = detect_corridor()
+            front_hit = (sensor_view is not None and sensor_view[F] == VIEW_WALL and sensors[F] < 0.14)
+
+            if front_hit:
+                ctx = min(99, ctx + 7)
+            elif many or corridor:
+                ctx = min(99, ctx + 2)
+            else:
+                ctx = max(0, ctx - 1)
+
+            if mode == 0 and ctx >= 60:
+                mode = 1
+            elif mode == 1 and ctx <= 40:
+                mode = 0
+            return mode, ctx
+
+        def nn_action():
+            # winner_layers prioritaire (murs/robots) même pendant la phase NN
+            handled, t, r = winner_layers()
+            if handled:
+                return t, r, internal
+
+            mode, ctx = unpack_internal(internal)
+            mode, ctx = update_mode_ctx(mode, ctx)
+            ctx_norm = ctx / 99.0
+
+            g = G_MAZE_0 if mode == 1 else G_OPEN_0
+            x = nn_inputs34(ctx_norm)
+            out = nn_forward(g, x)
+            t_raw, r_raw = out[0], out[1]
+
+            t = (t_raw + 1.0) * 0.5
+            t = max(0.15, min(1.0, t))
+            r = clamp(r_raw, -0.40, 0.40)
+
+            return clamp(t), clamp(r), pack_internal(mode, ctx)
+
+        # ----------------------------
+        # Sélection comportement par robot_id
+        # ----------------------------
+        if self.robot_id == 4:
+            enemy_seen = False
+            if sensor_view is not None:
+                for i in range(8):
+                    if is_enemy(i):
+                        enemy_seen = True
+                        break
+            if enemy_seen and it >= 1000:
+                t, r = hunter_chase()
+            else:
+                t, r = winner_full()
+
+            self.memory = it * ITER_SCALE + internal
+            return t, r, False
+
+        if self.robot_id == 0:
+            if it < 1000:
+                t, r = winner_full()
+                self.memory = it * ITER_SCALE + internal
+                return t, r, False
+
+            t, r, internal2 = nn_action()
+            internal = internal2
+            self.memory = it * ITER_SCALE + internal
+            return t, r, False
+
+        # autres robots: winner original (refactor)
+        t, r = winner_full()
+        self.memory = it * ITER_SCALE + internal
+        return t, r, False
