@@ -11,7 +11,7 @@ import math
 nb_robots = 0
 
 class Robot_player(Robot):
-    team_name = "A"
+    team_name = "Climatiseur"
     robot_id = -1
     memory = 0  # unique mémoire (int)
 
