@@ -1,15 +1,20 @@
 # Configuration file.
 
 import arenas
-
+import robot_menad
+import robot_braitenberg_loveBot
+import robot_wanderer
+import WallFollowexr
+import robot_braitenberg_hateWall
 # general -- first three parameters can be overwritten with command-line arguments (cf. "python tetracomposibot.py --help")
 
-display_mode = 1
-arena = 1
+display_mode = 0
+arena = 4
 position = False 
-max_iterations = 2001 #401*500
+max_iterations = 1000 #401*500
 
 # affichage
+import arenas_menad as arenas
 
 display_welcome_message = False
 verbose_minimal_progress = False # display iterations
@@ -22,8 +27,8 @@ display_time_stats = False
 
 import robot_challenger
 import robot_champion
-import robot_genome_player
 import robot_braitenberg_avoider
+import robot_menad_final
 import WallFollowexr
 def initialize_robots(arena_size=-1, particle_box=-1): # particle_box: size of the robot enclosed in a square
     global position
@@ -39,8 +44,14 @@ def initialize_robots(arena_size=-1, particle_box=-1): # particle_box: size of t
         orientation_champion = 180
         orientation_challenger = 0
     robots = []
-    for i in range(4):
-        robots.append(WallFollowexr.Robot_player(x_init_pos[0], arena_size//2-16+i*8, orientation_champion, name="", team="A"))
-    for i in range(4):
-        robots.append(robot_champion.Robot_player(x_init_pos[1], arena_size//2-16+i*8, orientation_challenger, name="", team="B"))
+    robots.append(robot_menad.Robot_player(x_init_pos[0], arena_size//2-16+0*8, orientation_champion, name=f"menad_{0}", team="A"))
+    robots.append(robot_menad.Robot_player(x_init_pos[0], arena_size//2-16+1*8, orientation_champion, name=f"menad_{1}", team="A"))
+
+    robots.append(robot_menad.Robot_player(x_init_pos[0], arena_size//2-16+2*8, orientation_champion, name=f"menad_{2}", team="A"))
+    robots.append(robot_menad.Robot_player(x_init_pos[0], arena_size//2-16+3*8, orientation_champion, name=f"menad_{3}", team="A"))
+
+    robots.append(robot_champion.Robot_player(x_init_pos[1], arena_size//2-16+0*8, orientation_challenger, name="", team="B"))
+    robots.append(robot_champion.Robot_player(x_init_pos[1], arena_size//2-16+1*8, orientation_challenger, name="", team="B"))
+    robots.append(robot_champion.Robot_player(x_init_pos[1], arena_size//2-16+2*8, orientation_challenger, name="", team="B"))
+    robots.append(robot_champion.Robot_player(x_init_pos[1], arena_size//2-16+3*8, orientation_challenger, name="", team="B"))
     return robots

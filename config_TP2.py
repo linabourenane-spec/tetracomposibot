@@ -21,9 +21,9 @@ display_time_stats = True
 
 # optimization
 
-evaluations = 600
-it_per_evaluation = 500
-max_iterations = 1000000
+evaluations = 10
+it_per_evaluation = 100
+max_iterations = 1000
 
 # initialization : create and place robots at initial positions (returns a list containing the robots)
 

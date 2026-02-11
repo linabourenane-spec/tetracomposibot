@@ -763,6 +763,9 @@ init()
 build_arena(config.arenas.get_arena(config.arena))
 robots = config.initialize_robots(arena_size,particle_box)
 retValues = simulate(robots)
+print(retValues)# Ajouter à la fin d'un fichier (ne pas écraser)
+with open('coverage.txt', 'a', encoding='utf-8') as f:
+    f.write(f"{retValues['coverage']}\n")
 
 display_stats(retValues) 
 
