@@ -3,9 +3,9 @@ import random
 import math
 
 # Refactor:
-# - Un seul code "winner" pour la détection murs/robots (utilisé par tous, y compris hunter et NN)
-# - Robot id=4 : winner par défaut, chasse (hunter) seulement si ennemi détecté
-# - Robot id=0 : ton NN/GA activé à partir de l'itération 1000, MAIS les 3 couches winner (robots/murs) restent prioritaires
+# - Robot id 1 et 2 : Fonctionnement simple par défaut
+# - Robot id=4 : chasse (hunter) seulement si ennemi détecté
+# - Robot id=0 :  NN/GA activé à partir de l'itération 1000, MAIS les 3 couches winner (robots/murs) restent prioritaires
 # Contrainte respectée: une seule mémoire self.memory (int)
 
 nb_robots = 0
@@ -61,7 +61,7 @@ class Robot_player(Robot):
         def winner_layers():
             """
             Applique les 3 couches winner:
-            1) robot détecté -> tourner (comme le winner original)
+            1) robot détecté -> tourner
             2) mur latéral -> wall follow proba 0.9, sinon avoidance
             3) mur non-latéral -> avoidance
             Retourne (handled, t, r)
@@ -128,7 +128,7 @@ class Robot_player(Robot):
             return winner_fallback_ga()
 
         # ----------------------------
-        # Hunter (ton code), mais déclenché uniquement si ennemi détecté
+        # Hunter , mais déclenché uniquement si ennemi détecté
         # et sinon: winner_full()
         # ----------------------------
         def hunter_chase():
@@ -175,7 +175,7 @@ class Robot_player(Robot):
             return winner_full()
 
         # ----------------------------
-        # NN (ton robot entraîné) - activé après 1000 itérations
+        # NN ( robot entraîné) - activé après 1000 itérations
         # MAIS: winner_layers reste prioritaire (murs/robots)
         # ----------------------------
         # Poids copiés depuis ton robot_menad (idx 0)
