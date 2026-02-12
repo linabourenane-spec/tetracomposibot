@@ -2,7 +2,11 @@ from robot import *
 import random
 import math
 
-# Refactor:
+# Binome:
+#  Prénom Nom No_étudiant/e : ACHERAIOU Menad 21304430
+#  Prénom Nom No_étudiant/e : BOURENANE Lina 21306093
+#
+
 # - Robot id 1 et 2 : Fonctionnement simple par défaut
 # - Robot id=4 : chasse (hunter) seulement si ennemi détecté
 # - Robot id=0 :  NN/GA activé à partir de l'itération 1000, MAIS les 3 couches winner (robots/murs) restent prioritaires
